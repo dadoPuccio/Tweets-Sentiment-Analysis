@@ -1,0 +1,5 @@
+# ingore folders
+/src/main/resources/
+/src/main/resources\ (mock)/
+/.idea/
+/target/
