@@ -9,6 +9,7 @@ public class Topology{
 
     private static final String CREDENTIALS_FILE_PATH = "./src/main/resources/credentials.json";
     private static final String MODEL_FILE_PATH = "./src/main/resources/SentimentClassifier.model";
+    private static final String SUPPLEMENTARY_INPUT_FILE = "./src/main/resources/test.csv";
 
     private static LocalCluster speedLayerCluster;
 
@@ -17,12 +18,19 @@ public class Topology{
         TopologyBuilder topologyBuilder = new TopologyBuilder();
 
         topologyBuilder.setSpout("TwitterSpout", new TwitterSpout(CREDENTIALS_FILE_PATH, keywords));
+        topologyBuilder.setSpout("FileSpout", new FileSpout(SUPPLEMENTARY_INPUT_FILE, keywords));
+
         topologyBuilder.setBolt("ParserBolt", new ParserBolt(keywords), 2)
                 .shuffleGrouping("TwitterSpout");
-        topologyBuilder.setBolt("SentimentBolt", new SentimentBolt(MODEL_FILE_PATH), 2)
-                .shuffleGrouping("ParserBolt");
-        topologyBuilder.setBolt("SpeedTableBolt", new SpeedTableBolt(), 2)
+        topologyBuilder.setBolt("SentimentBolt", new SentimentBolt(MODEL_FILE_PATH), 3)
+                .shuffleGrouping("ParserBolt")
+                .shuffleGrouping("FileSpout");
+
+        topologyBuilder.setBolt("SpeedTableBolt", new SpeedTableBolt(), 3)
                 .shuffleGrouping("SentimentBolt");
+        topologyBuilder.setBolt("BatchTableBolt", new BatchTableBolt(), 1)
+                .shuffleGrouping("ParserBolt")
+                .shuffleGrouping("FileSpout");
 
         Config config = new Config();
         speedLayerCluster = new LocalCluster();

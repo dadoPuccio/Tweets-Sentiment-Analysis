@@ -14,7 +14,7 @@ import java.util.Map;
 public class ParserBolt extends BaseRichBolt {
 
     private OutputCollector collector;
-    String[] keywords;
+    private final String[] keywords;
 
     public ParserBolt(String[] keywords) {
         this.keywords = keywords;
@@ -30,7 +30,8 @@ public class ParserBolt extends BaseRichBolt {
         JSONObject tweet = (JSONObject) input.getValueByField("Tweet");
         String content = tweet.get("text").toString().toLowerCase();
         String ID = tweet.get("id").toString();
-        System.out.println(content);
+        // System.out.println(content);
+
         StringBuilder tweetKeywords = new StringBuilder();
         for (String keyword : keywords){
             if(content.contains(keyword.toLowerCase())) {

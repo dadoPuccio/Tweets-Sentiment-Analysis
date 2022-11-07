@@ -1,5 +1,6 @@
 package servingLayer;
 
+import batchLayer.Driver;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
@@ -16,7 +17,6 @@ public class ServingLayer {
     private static final String BATCH_TABLE_NAME = "batch_table";
     private static final String BATCH_VIEW_TABLE_NAME = "batch_view_table";
 
-    private static Connection HBaseConnection;
     private static Table speedTable;
     private static Table syncTable;
     private static Table batchTable;
@@ -24,7 +24,7 @@ public class ServingLayer {
 
     public static void main(String[] args) throws Exception {
         Configuration configuration = HBaseConfiguration.create();
-        HBaseConnection = ConnectionFactory.createConnection(configuration);
+        Connection HBaseConnection = ConnectionFactory.createConnection(configuration);
         Admin admin = HBaseConnection.getAdmin();
 
         if(!admin.tableExists(TableName.valueOf(SPEED_TABLE_NAME))){
@@ -56,7 +56,7 @@ public class ServingLayer {
         if(!admin.tableExists(TableName.valueOf(BATCH_TABLE_NAME))){
             TableDescriptor batchTableDescriptor = TableDescriptorBuilder
                     .newBuilder(TableName.valueOf(BATCH_TABLE_NAME))
-                    .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("column_family")).build())
+                    .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("content")).build())
                     .build();
 
             admin.createTable(batchTableDescriptor);
@@ -65,7 +65,7 @@ public class ServingLayer {
         if(!admin.tableExists(TableName.valueOf(BATCH_VIEW_TABLE_NAME))){
             TableDescriptor batchViewTableDescriptor = TableDescriptorBuilder
                     .newBuilder(TableName.valueOf(BATCH_VIEW_TABLE_NAME))
-                    .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("column_family")).build())
+                    .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("sentiment_count")).build())
                     .build();
 
             admin.createTable(batchViewTableDescriptor);
@@ -78,10 +78,15 @@ public class ServingLayer {
 
         String[] keywords = {"Google", "Apple", "Musk"};
 
-        Topology.startSpeedLayer(keywords);
-        Thread.sleep(300000);
-        Topology.stopSpeedLayer();
+        // Topology.startSpeedLayer(keywords);
 
+        int batchIterations = 0;
+        while(batchIterations < 5){
+            Driver.startBatchLayer(keywords);
+            batchIterations++;
+        }
+
+        // Topology.stopSpeedLayer();
         HBaseConnection.close();
     }
 
@@ -97,6 +102,47 @@ public class ServingLayer {
         }
     }
 
+    public static void addBatchTableEntry(String TweetID, String Text){
+        Put put = new Put(Bytes.toBytes(TweetID))
+                .addColumn(Bytes.toBytes("content"), Bytes.toBytes("text"), Bytes.toBytes(Text));
+        try {
+            batchTable.put(put);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void notifyBatchStart(){
+        Put start_timestamp = new Put(Bytes.toBytes("start_timestamp")).addColumn(Bytes.toBytes("batch_timestamps"),  Bytes.toBytes(""), Bytes.toBytes(""));
+        try {
+            syncTable.put(start_timestamp);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void notifyBatchEnd(){
+        Put end_timestamp = new Put(Bytes.toBytes("end_timestamp")).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""),  Bytes.toBytes(""));
+        try {
+            syncTable.put(end_timestamp);
+            deleteExpiredEntriesSpeedTable();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void deleteExpiredEntriesSpeedTable() throws IOException {
+        long batchLayerStartTimeStamp = syncTable.get(new Get(Bytes.toBytes("start_timestamp"))).rawCells()[0].getTimestamp();
+
+        Scan scan = new Scan().setTimeRange(0, batchLayerStartTimeStamp);
+        ResultScanner resultScanner = speedTable.getScanner(scan);
+
+        Result res = resultScanner.next();
+        while(res != null){
+            speedTable.delete(new Delete(res.getRow()));
+            res = resultScanner.next();
+        }
+    }
 
 
 }

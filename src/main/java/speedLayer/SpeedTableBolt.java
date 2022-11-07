@@ -29,6 +29,7 @@ public class SpeedTableBolt extends BaseRichBolt {
         String KeyWord = input.getStringByField("KeyWord");
         String Sentiment = input.getStringByField("Sentiment");
 
+        System.out.println("[Speed Layer] Added " + KeyWord + " " + Sentiment);
         ServingLayer.addSpeedTableEntry(ID, KeyWord, Sentiment);
     }
 

@@ -41,10 +41,9 @@ public class SentimentBolt extends BaseRichBolt {
         String Content = input.getStringByField("Content");
         String Sentiment = classifier.classify(Content);
 
-        System.out.println(Content + "\t" + Sentiment);
+        // System.out.println(Content + "\t" + Sentiment);
 
         for(String KeyWord : input.getStringByField("KeyWords").split(",")) {
-            System.out.println(KeyWord);
             collector.emit(new Values(ID, KeyWord, Sentiment));
         }
     }
