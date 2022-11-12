@@ -12,7 +12,6 @@ import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.util.ToolRunner;
 
 import org.apache.hadoop.mapreduce.*;
 
@@ -20,14 +19,14 @@ import org.apache.hadoop.mapreduce.*;
 public class Driver {
 
     private static final String MODEL_FILE_PATH = "./src/main/resources/SentimentClassifier.model";
-    private static final int BATCH_LAYER_EXEC_WAIT = 5000; // further wait to simulate a slower batch layer
+    private static final int BATCH_LAYER_EXEC_WAIT = 0; // further wait to simulate a slower batch layer
 
     public static void doWork(String[] keywords) throws IOException, InterruptedException, ClassNotFoundException, URISyntaxException {
 
-        ServingLayer.notifyBatchStart();
+        Long startTimeStamp = ServingLayer.notifyBatchStart();
 
         Configuration conf = new Configuration();
-        conf.setLong("startTimeStamp", System.currentTimeMillis());
+        conf.setLong("startTimeStamp", startTimeStamp);
         conf.setStrings("keywords", keywords);
 
         Job job = Job.getInstance(conf, "BatchLayer_SentimentAnalysis");

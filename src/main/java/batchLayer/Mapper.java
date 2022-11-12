@@ -23,7 +23,7 @@ public class Mapper extends TableMapper<Text, IntWritable> {
     protected void setup(Context context) {
         Configuration conf = context.getConfiguration();
         startTimeStamp = conf.getLong("startTimeStamp", 0);
-        // System.out.println(startTimeStamp);
+        System.out.println(startTimeStamp);
         keywords = conf.getStrings("keywords");
 
         try {
