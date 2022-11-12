@@ -1,6 +1,7 @@
 package servingLayer;
 
 import batchLayer.Driver;
+import gui.MainSceneController;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
@@ -9,8 +10,13 @@ import org.apache.hadoop.hbase.util.Bytes;
 import speedLayer.Topology;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
-public class ServingLayer {
+public class ServingLayer implements Runnable {
+
+    private static Connection HBaseConnection;
 
     private static final String SPEED_TABLE_NAME = "speed_table";
     private static final String SYNC_TABLE_NAME = "sync_table";
@@ -22,12 +28,47 @@ public class ServingLayer {
     private static Table batchTable;
     private static Table batchViewTable;
 
-    public static void main(String[] args) throws Exception {
+    private final String[] keywords;
+    private static boolean needToStop = false;
+    private static MainSceneController viewController;
+
+    public ServingLayer(String[] keywords, MainSceneController viewController) {
+        this.keywords = keywords;
+        ServingLayer.viewController = viewController;
+    }
+
+    @Override
+    public void run() {
+        try {
+            main(keywords);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void main(String[] keywords) throws Exception {
+        initTables();
+
+        Topology.startSpeedLayer(keywords);
+        while (!needToStop)
+            Driver.startBatchLayer(keywords);
+
+        Topology.stopSpeedLayer();
+        HBaseConnection.close();
+    }
+
+    public static void stop(){
+        needToStop = true;
+    }
+
+    public static void initTables() throws IOException {
         Configuration configuration = HBaseConfiguration.create();
-        Connection HBaseConnection = ConnectionFactory.createConnection(configuration);
+        HBaseConnection = ConnectionFactory.createConnection(configuration);
         Admin admin = HBaseConnection.getAdmin();
 
-        if(!admin.tableExists(TableName.valueOf(SPEED_TABLE_NAME))){
+        cleanUpOldResults(admin);
+
+        if (!admin.tableExists(TableName.valueOf(SPEED_TABLE_NAME))) {
             TableDescriptor speedTableDescriptor = TableDescriptorBuilder
                     .newBuilder(TableName.valueOf(SPEED_TABLE_NAME))
                     .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("tweet_sentiments")).build())
@@ -36,7 +77,7 @@ public class ServingLayer {
             admin.createTable(speedTableDescriptor);
         }
 
-        if(!admin.tableExists(TableName.valueOf(SYNC_TABLE_NAME))){
+        if (!admin.tableExists(TableName.valueOf(SYNC_TABLE_NAME))) {
             TableDescriptor syncTableDescriptor = TableDescriptorBuilder
                     .newBuilder(TableName.valueOf(SYNC_TABLE_NAME))
                     .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("batch_timestamps")).build())
@@ -46,14 +87,14 @@ public class ServingLayer {
 
             syncTable = HBaseConnection.getTable(TableName.valueOf(SYNC_TABLE_NAME));
 
-            Put start_timestamp = new Put(Bytes.toBytes("start_timestamp"), 0).addColumn(Bytes.toBytes("batch_timestamps"),  Bytes.toBytes(""), Bytes.toBytes(""));
-            Put end_timestamp = new Put(Bytes.toBytes("end_timestamp"), 0).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""),  Bytes.toBytes(""));
+            Put start_timestamp = new Put(Bytes.toBytes("start_timestamp"), 0).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""), Bytes.toBytes(""));
+            Put end_timestamp = new Put(Bytes.toBytes("end_timestamp"), 0).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""), Bytes.toBytes(""));
 
             syncTable.put(start_timestamp);
             syncTable.put(end_timestamp);
         }
 
-        if(!admin.tableExists(TableName.valueOf(BATCH_TABLE_NAME))){
+        if (!admin.tableExists(TableName.valueOf(BATCH_TABLE_NAME))) {
             TableDescriptor batchTableDescriptor = TableDescriptorBuilder
                     .newBuilder(TableName.valueOf(BATCH_TABLE_NAME))
                     .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("content")).build())
@@ -62,7 +103,7 @@ public class ServingLayer {
             admin.createTable(batchTableDescriptor);
         }
 
-        if(!admin.tableExists(TableName.valueOf(BATCH_VIEW_TABLE_NAME))){
+        if (!admin.tableExists(TableName.valueOf(BATCH_VIEW_TABLE_NAME))) {
             TableDescriptor batchViewTableDescriptor = TableDescriptorBuilder
                     .newBuilder(TableName.valueOf(BATCH_VIEW_TABLE_NAME))
                     .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("sentiment_count")).build())
@@ -75,19 +116,6 @@ public class ServingLayer {
         syncTable = HBaseConnection.getTable(TableName.valueOf(SYNC_TABLE_NAME));
         batchTable = HBaseConnection.getTable(TableName.valueOf(BATCH_TABLE_NAME));
         batchViewTable = HBaseConnection.getTable(TableName.valueOf(BATCH_VIEW_TABLE_NAME));
-
-        String[] keywords = {"Google", "Apple", "Musk"};
-
-        // Topology.startSpeedLayer(keywords);
-
-        int batchIterations = 0;
-        while(batchIterations < 5){
-            Driver.startBatchLayer(keywords);
-            batchIterations++;
-        }
-
-        // Topology.stopSpeedLayer();
-        HBaseConnection.close();
     }
 
     public static void addSpeedTableEntry(String TweetID, String KeyWord, String Sentiment){
@@ -97,6 +125,7 @@ public class ServingLayer {
                 .addColumn(Bytes.toBytes("tweet_sentiments"), Bytes.toBytes("Sentiment"), Bytes.toBytes(Sentiment));
         try{
             speedTable.put(put);
+            viewController.updateRealTimeView();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -112,23 +141,99 @@ public class ServingLayer {
         }
     }
 
-    public static void notifyBatchStart(){
-        Put start_timestamp = new Put(Bytes.toBytes("start_timestamp")).addColumn(Bytes.toBytes("batch_timestamps"),  Bytes.toBytes(""), Bytes.toBytes(""));
+    public static Long notifyBatchStart()  {
+        Put start_timestamp_put = new Put(Bytes.toBytes("start_timestamp")).addColumn(Bytes.toBytes("batch_timestamps"),  Bytes.toBytes(""), Bytes.toBytes(""));
+
         try {
-            syncTable.put(start_timestamp);
+            syncTable.put(start_timestamp_put);
+
+            viewController.updateBatchView();
+            viewController.updateRealTimeView();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        return start_timestamp_put.getTimestamp();
     }
+
 
     public static void notifyBatchEnd(){
         Put end_timestamp = new Put(Bytes.toBytes("end_timestamp")).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""),  Bytes.toBytes(""));
         try {
             syncTable.put(end_timestamp);
             deleteExpiredEntriesSpeedTable();
+
+            viewController.updateBatchView();
+            viewController.updateRealTimeView();
+
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static HashMap<String, HashMap<String, Integer>> getSpeedLayerCounts() throws IOException {
+        HashMap<String, HashMap<String, Integer>> counts = new HashMap<>();
+
+        Scan scan = new Scan().addFamily(Bytes.toBytes("tweet_sentiments"));
+        ResultScanner resultScanner = speedTable.getScanner(scan);
+
+        Result res = resultScanner.next();
+        while(res != null){
+            String keyword = Bytes.toString(res.getValue(Bytes.toBytes("tweet_sentiments"), Bytes.toBytes("KeyWord")));
+            String sentiment = Bytes.toString(res.getValue(Bytes.toBytes("tweet_sentiments"), Bytes.toBytes("Sentiment")));
+
+            if(!counts.containsKey(keyword)) {
+                HashMap<String, Integer> emptyCounts = new HashMap<>();
+                emptyCounts.put("positive", 0);
+                emptyCounts.put("negative", 0);
+                counts.put(keyword, emptyCounts);
+            }
+
+            if(sentiment.equals("1")){
+                counts.get(keyword).merge("positive", 1, Integer::sum);
+            } else if(sentiment.equals("0")){
+                counts.get(keyword).merge("negative", 1, Integer::sum);
+            } else {
+                throw new RuntimeException("Speed Table has some invalid elements");
+            }
+
+            res = resultScanner.next();
+        }
+
+        return counts;
+    }
+
+    public static HashMap<String, HashMap<String, Integer>> getBatchLayerCounts() throws IOException {
+        HashMap<String, HashMap<String, Integer>> counts = new HashMap<>();
+
+        Scan scan = new Scan().addFamily(Bytes.toBytes("sentiment_count"));
+        ResultScanner resultScanner = batchViewTable.getScanner(scan);
+
+        Result res = resultScanner.next();
+        while(res != null){
+            String keyword = Bytes.toString(res.getRow());
+            int nPositive = Bytes.toInt(res.getValue(Bytes.toBytes("sentiment_count"), Bytes.toBytes("nPositive")));
+            int nNegative = Bytes.toInt(res.getValue(Bytes.toBytes("sentiment_count"), Bytes.toBytes("nNegative")));
+
+            HashMap<String, Integer> keyCounts = new HashMap<>();
+            keyCounts.put("positive", nPositive);
+            keyCounts.put("negative", nNegative);
+            counts.put(keyword, keyCounts);
+
+            res = resultScanner.next();
+        }
+
+        return counts;
+    }
+
+    private static void cleanUpOldResults(Admin admin) throws IOException {
+        admin.disableTable(TableName.valueOf(SPEED_TABLE_NAME));
+        admin.deleteTable(TableName.valueOf(SPEED_TABLE_NAME));
+        admin.disableTable(TableName.valueOf(SYNC_TABLE_NAME));
+        admin.deleteTable(TableName.valueOf(SYNC_TABLE_NAME));
+        admin.disableTable(TableName.valueOf(BATCH_TABLE_NAME));
+        admin.deleteTable(TableName.valueOf(BATCH_TABLE_NAME));
+        admin.disableTable(TableName.valueOf(BATCH_VIEW_TABLE_NAME));
+        admin.deleteTable(TableName.valueOf(BATCH_VIEW_TABLE_NAME));
     }
 
     private static void deleteExpiredEntriesSpeedTable() throws IOException {
@@ -137,12 +242,14 @@ public class ServingLayer {
         Scan scan = new Scan().setTimeRange(0, batchLayerStartTimeStamp);
         ResultScanner resultScanner = speedTable.getScanner(scan);
 
+        List<Delete> listOfDelete = new ArrayList<>();
+
         Result res = resultScanner.next();
         while(res != null){
-            speedTable.delete(new Delete(res.getRow()));
+            listOfDelete.add(new Delete(res.getRow()));
             res = resultScanner.next();
         }
+
+        speedTable.delete(listOfDelete);
     }
-
-
 }
