@@ -15,7 +15,7 @@ import java.util.Map;
 public class FileSpout extends BaseRichSpout {
 
     private final String[][] input_rows;
-
+    private static boolean fileRead = false;
 
     private SpoutOutputCollector collector;
     private final String[] keywords;
@@ -36,23 +36,26 @@ public class FileSpout extends BaseRichSpout {
     public void nextTuple() {
         String ID, content;
 
-        for(String[] row : input_rows){
-            if(row.length == 7) {
-                ID = row[1];
-                content = row[5].toLowerCase();
+        if(!fileRead) {
+            for (String[] row : input_rows) {
+                if (row.length == 7) {
+                    ID = row[1];
+                    content = row[5].toLowerCase();
 
-                StringBuilder tweetKeywords = new StringBuilder();
-                for(String keyword : keywords){
-                    if(content.contains(keyword.toLowerCase())){
-                        tweetKeywords.append(keyword);
-                        tweetKeywords.append(",");
+                    StringBuilder tweetKeywords = new StringBuilder();
+                    for (String keyword : keywords) {
+                        if (content.contains(keyword.toLowerCase())) {
+                            tweetKeywords.append(keyword);
+                            tweetKeywords.append(",");
+                        }
                     }
+
+                    if (!tweetKeywords.toString().isEmpty())
+                        collector.emit(new Values(ID, content, tweetKeywords.toString()));
+
                 }
-
-                if(!tweetKeywords.toString().isEmpty())
-                    collector.emit(new Values(ID, content, tweetKeywords.toString()));
-
             }
+            fileRead = true;
         }
     }
 

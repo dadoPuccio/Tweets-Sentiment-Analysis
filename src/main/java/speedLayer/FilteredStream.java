@@ -67,13 +67,16 @@ public class FilteredStream {
             JSONObject jsonTweet = new JSONObject(line);
 
             int counter = 0;
-            while (counter < 50) {
+            while (counter < 1000) {
                 JSONObject tweet = (JSONObject) jsonTweet.get("data");
                 tweetsQueue.offer(tweet);
 
                 counter += 1;
                 line = reader.readLine();
-                jsonTweet = new JSONObject(line);
+                if(line.isEmpty())
+                    counter = 1000;
+                else
+                    jsonTweet = new JSONObject(line);
             }
         }
     }

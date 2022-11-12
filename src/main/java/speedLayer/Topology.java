@@ -20,7 +20,7 @@ public class Topology{
         topologyBuilder.setSpout("TwitterSpout", new TwitterSpout(CREDENTIALS_FILE_PATH, keywords));
         topologyBuilder.setSpout("FileSpout", new FileSpout(SUPPLEMENTARY_INPUT_FILE, keywords));
 
-        topologyBuilder.setBolt("ParserBolt", new ParserBolt(keywords), 2)
+        topologyBuilder.setBolt("ParserBolt", new ParserBolt(keywords), 3)
                 .shuffleGrouping("TwitterSpout");
         topologyBuilder.setBolt("SentimentBolt", new SentimentBolt(MODEL_FILE_PATH), 3)
                 .shuffleGrouping("ParserBolt")

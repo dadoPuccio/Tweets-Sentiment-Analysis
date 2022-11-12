@@ -64,8 +64,4 @@ public class TwitterSpout extends BaseRichSpout {
         outputFieldsDeclarer.declare(new Fields("Tweet"));
     }
 
-    @Override
-    public void close() {
-        // tsle.shutdown();
-    }
 }

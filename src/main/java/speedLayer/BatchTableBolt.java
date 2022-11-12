@@ -11,7 +11,7 @@ import java.util.Map;
 
 public class BatchTableBolt extends BaseRichBolt {
     @Override
-    public void prepare(Map<String, Object> topoConf, TopologyContext context, OutputCollector collector) {
+    public void prepare(Map<String, Object> topologyConf, TopologyContext context, OutputCollector collector) {
 
     }
 
