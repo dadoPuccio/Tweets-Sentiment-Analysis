@@ -63,20 +63,22 @@ public class FilteredStream {
         HttpEntity entity = response.getEntity();
         if (null != entity) {
             BufferedReader reader = new BufferedReader(new InputStreamReader((entity.getContent())));
-            String line = reader.readLine();
-            JSONObject jsonTweet = new JSONObject(line);
+
+            String line;
+            JSONObject jsonTweet;
 
             int counter = 0;
-            while (counter < 1000) {
-                JSONObject tweet = (JSONObject) jsonTweet.get("data");
-                tweetsQueue.offer(tweet);
-
-                counter += 1;
+            while (counter < 5000) {
                 line = reader.readLine();
-                if(line.isEmpty())
-                    counter = 1000;
-                else
+                if(!line.isEmpty()) {
                     jsonTweet = new JSONObject(line);
+                    JSONObject tweet = (JSONObject) jsonTweet.get("data");
+                    tweetsQueue.offer(tweet);
+
+                    counter += 1;
+                } else {
+                    System.out.println("[FilteredStream] COUNTER " + counter);
+                }
             }
         }
     }
@@ -105,12 +107,12 @@ public class FilteredStream {
         query.append(keywords[keywords.length - 1]);
 
         StringEntity body = new StringEntity("{\"add\": [{\"value\": \"("+ query+") lang:en\"}]}");
-        System.out.println(body);
+        System.out.println("[FilteredStream]" + query);
         httpPost.setEntity(body);
         HttpResponse response = httpClient.execute(httpPost);
         HttpEntity entity = response.getEntity();
         if (null != entity) {
-            System.out.println(EntityUtils.toString(entity, "UTF-8"));
+            System.out.println("[FilteredStream]" + EntityUtils.toString(entity, "UTF-8"));
         }
     }
 

@@ -87,9 +87,11 @@ public class ServingLayer implements Runnable {
 
             syncTable = HBaseConnection.getTable(TableName.valueOf(SYNC_TABLE_NAME));
 
+            Put previous_start_timestamp = new Put(Bytes.toBytes("previous_start_timestamp"), 0).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""), Bytes.toBytes(""));
             Put start_timestamp = new Put(Bytes.toBytes("start_timestamp"), 0).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""), Bytes.toBytes(""));
             Put end_timestamp = new Put(Bytes.toBytes("end_timestamp"), 0).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""), Bytes.toBytes(""));
 
+            syncTable.put(previous_start_timestamp);
             syncTable.put(start_timestamp);
             syncTable.put(end_timestamp);
         }
@@ -141,10 +143,15 @@ public class ServingLayer implements Runnable {
         }
     }
 
-    public static Long notifyBatchStart()  {
+    public static Long notifyBatchStart() throws IOException {
+
+        long last_batch_start_timestamp = syncTable.get(new Get(Bytes.toBytes("start_timestamp"))).rawCells()[0].getTimestamp();
+
+        Put previous_start_timestamp = new Put(Bytes.toBytes("previous_start_timestamp"), last_batch_start_timestamp).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""), Bytes.toBytes(""));
         Put start_timestamp_put = new Put(Bytes.toBytes("start_timestamp")).addColumn(Bytes.toBytes("batch_timestamps"),  Bytes.toBytes(""), Bytes.toBytes(""));
 
         try {
+            syncTable.put(previous_start_timestamp);
             syncTable.put(start_timestamp_put);
 
             viewController.updateBatchView();
@@ -160,7 +167,6 @@ public class ServingLayer implements Runnable {
         Put end_timestamp = new Put(Bytes.toBytes("end_timestamp")).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""),  Bytes.toBytes(""));
         try {
             syncTable.put(end_timestamp);
-            deleteExpiredEntriesSpeedTable();
 
             viewController.updateBatchView();
             viewController.updateRealTimeView();
@@ -173,7 +179,15 @@ public class ServingLayer implements Runnable {
     public static HashMap<String, HashMap<String, Integer>> getSpeedLayerCounts() throws IOException {
         HashMap<String, HashMap<String, Integer>> counts = new HashMap<>();
 
-        Scan scan = new Scan().addFamily(Bytes.toBytes("tweet_sentiments"));
+        long prev_batch_start_time = syncTable.get(new Get(Bytes.toBytes("previous_start_timestamp"))).rawCells()[0].getTimestamp();
+        long batch_start_time = syncTable.get(new Get(Bytes.toBytes("start_timestamp"))).rawCells()[0].getTimestamp();
+        long batch_end_time = syncTable.get(new Get(Bytes.toBytes("end_timestamp"))).rawCells()[0].getTimestamp();
+
+        long expiration_threshold = batch_start_time > batch_end_time ? prev_batch_start_time : batch_start_time;
+
+        expiration_threshold += 2000; // in order to compensate for delay of speed layer
+
+        Scan scan = new Scan().addFamily(Bytes.toBytes("tweet_sentiments")).setTimeRange(expiration_threshold, Long.MAX_VALUE);
         ResultScanner resultScanner = speedTable.getScanner(scan);
 
         Result res = resultScanner.next();
@@ -237,6 +251,7 @@ public class ServingLayer implements Runnable {
     }
 
     private static void deleteExpiredEntriesSpeedTable() throws IOException {
+        /* Another approach: deletes entries from the speed table when a batch finishes */
         long batchLayerStartTimeStamp = syncTable.get(new Get(Bytes.toBytes("start_timestamp"))).rawCells()[0].getTimestamp();
 
         Scan scan = new Scan().setTimeRange(0, batchLayerStartTimeStamp);

@@ -42,21 +42,30 @@ public class TwitterSpout extends BaseRichSpout {
         filteredStream = new FilteredStream(BEARER_TOKEN, keywords);
         try {
             filteredStream.setupRules();
-            filteredStream.connectStream();
+
+            new Thread(() -> {
+                try {
+                    filteredStream.connectStream(); // in order to avoid blocking behavior
+                } catch (IOException | URISyntaxException e) {
+                    throw new RuntimeException(e);
+                }
+            }).start();
+
         } catch (IOException | URISyntaxException e) {
             throw new RuntimeException(e);
         }
 
     }
 
-
     @Override
     public void nextTuple() {
         org.json.JSONObject tweet = filteredStream.getTweet();
         if(tweet == null)
             Utils.sleep(50);
-        else
+        else {
+            // System.out.println("[TwitterSpout] emitted tweet");
             collector.emit(new Values(tweet));
+        }
     }
 
     @Override
