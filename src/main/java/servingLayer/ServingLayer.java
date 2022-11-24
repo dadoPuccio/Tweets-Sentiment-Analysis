@@ -1,7 +1,6 @@
 package servingLayer;
 
 import batchLayer.Driver;
-import gui.MainSceneController;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
@@ -30,11 +29,9 @@ public class ServingLayer implements Runnable {
 
     private final String[] keywords;
     private static boolean needToStop = false;
-    private static MainSceneController viewController;
 
-    public ServingLayer(String[] keywords, MainSceneController viewController) {
+    public ServingLayer(String[] keywords) {
         this.keywords = keywords;
-        ServingLayer.viewController = viewController;
     }
 
     @Override
@@ -127,7 +124,6 @@ public class ServingLayer implements Runnable {
                 .addColumn(Bytes.toBytes("tweet_sentiments"), Bytes.toBytes("Sentiment"), Bytes.toBytes(Sentiment));
         try{
             speedTable.put(put);
-            viewController.updateRealTimeView();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -153,9 +149,6 @@ public class ServingLayer implements Runnable {
         try {
             syncTable.put(previous_start_timestamp);
             syncTable.put(start_timestamp_put);
-
-            viewController.updateBatchView();
-            viewController.updateRealTimeView();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -167,10 +160,6 @@ public class ServingLayer implements Runnable {
         Put end_timestamp = new Put(Bytes.toBytes("end_timestamp")).addColumn(Bytes.toBytes("batch_timestamps"), Bytes.toBytes(""),  Bytes.toBytes(""));
         try {
             syncTable.put(end_timestamp);
-
-            viewController.updateBatchView();
-            viewController.updateRealTimeView();
-
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

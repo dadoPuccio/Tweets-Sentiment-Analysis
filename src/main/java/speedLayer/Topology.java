@@ -17,16 +17,16 @@ public class Topology{
 
         TopologyBuilder topologyBuilder = new TopologyBuilder();
 
-        topologyBuilder.setSpout("TwitterSpout", new TwitterSpout(CREDENTIALS_FILE_PATH, keywords));
-        topologyBuilder.setSpout("FileSpout", new FileSpout(SUPPLEMENTARY_INPUT_FILE, keywords));
+        topologyBuilder.setSpout("TwitterSpout", new TwitterSpout(CREDENTIALS_FILE_PATH, keywords, 1000), 1);
+        topologyBuilder.setSpout("FileSpout", new FileSpout(SUPPLEMENTARY_INPUT_FILE, keywords), 1);
 
-        topologyBuilder.setBolt("ParserBolt", new ParserBolt(keywords), 3)
+        topologyBuilder.setBolt("ParserBolt", new ParserBolt(keywords), 5)
                 .shuffleGrouping("TwitterSpout");
-        topologyBuilder.setBolt("SentimentBolt", new SentimentBolt(MODEL_FILE_PATH), 3)
+        topologyBuilder.setBolt("SentimentBolt", new SentimentBolt(MODEL_FILE_PATH), 5)
                 .shuffleGrouping("ParserBolt")
                 .shuffleGrouping("FileSpout");
 
-        topologyBuilder.setBolt("SpeedTableBolt", new SpeedTableBolt(), 3)
+        topologyBuilder.setBolt("SpeedTableBolt", new SpeedTableBolt(), 5)
                 .shuffleGrouping("SentimentBolt");
         topologyBuilder.setBolt("BatchTableBolt", new BatchTableBolt(), 1)
                 .shuffleGrouping("ParserBolt")

@@ -16,6 +16,8 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.ResourceBundle;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class MainSceneController implements Initializable {
 
@@ -35,6 +37,8 @@ public class MainSceneController implements Initializable {
     private XYChart.Series<String, Integer> combinedPositive;
     private XYChart.Series<String, Integer> combinedNegative;
 
+    private Timer updateTimer;
+
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
 
@@ -51,12 +55,33 @@ public class MainSceneController implements Initializable {
 
         combinedNegative = new XYChart.Series<>();
         combinedNegative.setName("negative");
+
+        updateTimer = new Timer();
+        updateTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    updateRealTimeView();
+                    updateBatchView();
+                    updateCombinedChart();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                } catch (NullPointerException e){
+                    System.out.println("[MainSceneController] Lambda Architecture tables are not available yet!");
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                }
+            }
+        }, 8000, 200);
     }
 
     public void startAnalysis(String[] keywords) {
 
         // starting the architecture asynchronously
-        Thread LambdaArchitectureThread = new Thread(new ServingLayer(keywords, this));
+        Thread LambdaArchitectureThread = new Thread(new ServingLayer(keywords));
         LambdaArchitectureThread.start();
 
         for(String keyword : keywords) {
@@ -70,7 +95,6 @@ public class MainSceneController implements Initializable {
         combinedChart.getData().add(combinedPositive);
         combinedChart.getData().add(combinedNegative);
         updateCombinedChart();
-
     }
 
     public void stopAnalysis(MouseEvent mouseEvent) {
@@ -78,9 +102,11 @@ public class MainSceneController implements Initializable {
         stopButton.setText("Stopping the architecture...");
         stopButton.setMinWidth(260);
         stopButton.setDisable(true);
+
+        updateTimer.cancel();
     }
 
-    public void updateRealTimeView() throws IOException {
+    private void updateRealTimeView() throws IOException {
         HashMap<String, HashMap<String, Integer>> counts = ServingLayer.getSpeedLayerCounts();
         int nPositive;
         int nNegative;
@@ -98,10 +124,10 @@ public class MainSceneController implements Initializable {
             }
         }
         realTimeTable.refresh();
-        updateCombinedChart();
+        // updateCombinedChart();
     }
 
-    public void updateBatchView() throws IOException {
+    private void updateBatchView() throws IOException {
         HashMap<String, HashMap<String, Integer>> counts = ServingLayer.getBatchLayerCounts();
         int nPositive;
         int nNegative;
@@ -119,7 +145,7 @@ public class MainSceneController implements Initializable {
         }
 
         batchTable.refresh();
-        updateCombinedChart();
+        // updateCombinedChart();
     }
 
     private void updateCombinedChart() {
